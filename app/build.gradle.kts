@@ -4,6 +4,23 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// Load .env file
+fun loadEnvFile(): Map<String, String> {
+    val envFile = rootProject.file(".env")
+    val envMap = mutableMapOf<String, String>()
+    if (envFile.exists()) {
+        envFile.readLines().forEach { line ->
+            if (line.isNotBlank() && !line.startsWith("#") && line.contains("=")) {
+                val (key, value) = line.split("=", limit = 2)
+                envMap[key.trim()] = value.trim()
+            }
+        }
+    }
+    return envMap
+}
+
+val env = loadEnvFile()
+
 android {
     namespace = "com.example.noteapp"
     compileSdk = 36
@@ -16,6 +33,10 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        
+        // Supabase credentials from .env file
+        buildConfigField("String", "SUPABASE_URL", "\"${env["SUPABASE_URL"] ?: ""}\"")
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"${env["SUPABASE_ANON_KEY"] ?: ""}\"")
     }
 
     buildTypes {
@@ -36,6 +57,7 @@ android {
     }
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 }
 
