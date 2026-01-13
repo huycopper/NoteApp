@@ -32,10 +32,28 @@ class UpdateNoteActivity : AppCompatActivity() {
         binding.updateSaveButton.setOnClickListener {
             val newTitle = binding.updateTitleEditText.text.toString()
             val newContent = binding.updateContentEditText.text.toString()
-            val newUpdatedNote = Note(noteId, newTitle, newContent)
-            db.updateNote(newUpdatedNote)
+            
+            if (newTitle.isEmpty()) {
+                Toast.makeText(this, "Vui lòng nhập tiêu đề", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            
+            // Preserve existing sync fields while updating content
+            val existingNote = db.getNoteById(noteId)
+            val updatedNote = Note(
+                id = noteId,
+                title = newTitle,
+                content = newContent,
+                supabaseId = existingNote.supabaseId,
+                userId = existingNote.userId,
+                updatedAt = System.currentTimeMillis(),
+                isSynced = false,  // Mark as unsynced after update
+                isDeleted = false
+            )
+            db.updateNote(updatedNote)
+            
+            Toast.makeText(this, "Đã lưu thay đổi", Toast.LENGTH_SHORT).show()
             finish()
-            Toast.makeText(this, "Changes Saved", Toast.LENGTH_SHORT).show()
         }
     }
 }
