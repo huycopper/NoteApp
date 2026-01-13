@@ -9,7 +9,7 @@ class NotesDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE
     
     companion object {
         private const val DATABASE_NAME = "notesapp.db"
-        private const val DATABASE_VERSION = 2  // Upgraded for sync support
+        private const val DATABASE_VERSION = 2
         private const val TABLE_NAME = "allnotes"
         private const val COLUMN_ID = "id"
         private const val COLUMN_TITLE = "title"
@@ -21,7 +21,7 @@ class NotesDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE
         private const val COLUMN_IS_DELETED = "is_deleted"
     }
 
-    override fun onCreate(db: SQLiteDatabase?) { // Dùng để tạo bảng
+    override fun onCreate(db: SQLiteDatabase?) {
         val createTableQuery = """
             CREATE TABLE $TABLE_NAME (
                 $COLUMN_ID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,7 +39,6 @@ class NotesDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE
 
     override fun onUpgrade(db: SQLiteDatabase?, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) {
-            // Add new columns for sync support
             db?.execSQL("ALTER TABLE $TABLE_NAME ADD COLUMN $COLUMN_SUPABASE_ID TEXT")
             db?.execSQL("ALTER TABLE $TABLE_NAME ADD COLUMN $COLUMN_USER_ID TEXT")
             db?.execSQL("ALTER TABLE $TABLE_NAME ADD COLUMN $COLUMN_UPDATED_AT INTEGER DEFAULT 0")
@@ -59,23 +58,19 @@ class NotesDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE
             put(COLUMN_IS_SYNCED, if (note.isSynced) 1 else 0)
             put(COLUMN_IS_DELETED, if (note.isDeleted) 1 else 0)
         }
-        val id = db.insert(TABLE_NAME, null, values)
-        db.close()
-        return id
+        return db.insert(TABLE_NAME, null, values)
     }
 
-    fun getAllNotes(): List<Note> { // lấy các ghi chú từ sqlite vào ứng dụng
+    fun getAllNotes(): List<Note> {
         val notesList = mutableListOf<Note>()
         val db = readableDatabase
         val query = "SELECT * FROM $TABLE_NAME WHERE $COLUMN_IS_DELETED = 0"
         val cursor = db.rawQuery(query, null)
 
         while (cursor.moveToNext()) {
-            val note = cursorToNote(cursor)
-            notesList.add(note)
+            notesList.add(cursorToNote(cursor))
         }
         cursor.close()
-        db.close()
         return notesList
     }
 
@@ -86,11 +81,9 @@ class NotesDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE
         val cursor = db.rawQuery(query, null)
 
         while (cursor.moveToNext()) {
-            val note = cursorToNote(cursor)
-            notesList.add(note)
+            notesList.add(cursorToNote(cursor))
         }
         cursor.close()
-        db.close()
         return notesList
     }
 
@@ -101,11 +94,9 @@ class NotesDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE
         val cursor = db.rawQuery(query, null)
 
         while (cursor.moveToNext()) {
-            val note = cursorToNote(cursor)
-            notesList.add(note)
+            notesList.add(cursorToNote(cursor))
         }
         cursor.close()
-        db.close()
         return notesList
     }
 
@@ -139,13 +130,10 @@ class NotesDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE
             put(COLUMN_SUPABASE_ID, note.supabaseId)
             put(COLUMN_USER_ID, note.userId)
             put(COLUMN_UPDATED_AT, System.currentTimeMillis())
-            put(COLUMN_IS_SYNCED, 0)  // Mark as unsynced after update
+            put(COLUMN_IS_SYNCED, 0)
             put(COLUMN_IS_DELETED, if (note.isDeleted) 1 else 0)
         }
-        val whereClause = "$COLUMN_ID = ?"
-        val whereArgs = arrayOf(note.id.toString())
-        db.update(TABLE_NAME, values, whereClause, whereArgs)
-        db.close()
+        db.update(TABLE_NAME, values, "$COLUMN_ID = ?", arrayOf(note.id.toString()))
     }
 
     fun markAsSynced(noteId: Int, supabaseId: String) {
@@ -154,69 +142,52 @@ class NotesDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE
             put(COLUMN_SUPABASE_ID, supabaseId)
             put(COLUMN_IS_SYNCED, 1)
         }
-        val whereClause = "$COLUMN_ID = ?"
-        val whereArgs = arrayOf(noteId.toString())
-        db.update(TABLE_NAME, values, whereClause, whereArgs)
-        db.close()
+        db.update(TABLE_NAME, values, "$COLUMN_ID = ?", arrayOf(noteId.toString()))
     }
 
     fun setUserIdForAllNotes(userId: String) {
         val db = writableDatabase
         val values = ContentValues().apply {
             put(COLUMN_USER_ID, userId)
-            put(COLUMN_IS_SYNCED, 0)  // Mark as unsynced to trigger upload
+            put(COLUMN_IS_SYNCED, 0)
         }
         db.update(TABLE_NAME, values, null, null)
-        db.close()
     }
 
     fun getNoteById(noteId: Int): Note {
         val db = readableDatabase
-        val query = "SELECT * FROM $TABLE_NAME WHERE $COLUMN_ID = $noteId"
-        val cursor = db.rawQuery(query, null)
+        val cursor = db.rawQuery("SELECT * FROM $TABLE_NAME WHERE $COLUMN_ID = ?", arrayOf(noteId.toString()))
         cursor.moveToFirst()
-
         val note = cursorToNote(cursor)
-
         cursor.close()
-        db.close()
         return note
     }
 
     fun getNoteBySupabaseId(supabaseId: String): Note? {
         val db = readableDatabase
-        val query = "SELECT * FROM $TABLE_NAME WHERE $COLUMN_SUPABASE_ID = ?"
-        val cursor = db.rawQuery(query, arrayOf(supabaseId))
-        
+        val cursor = db.rawQuery("SELECT * FROM $TABLE_NAME WHERE $COLUMN_SUPABASE_ID = ?", arrayOf(supabaseId))
         val note = if (cursor.moveToFirst()) cursorToNote(cursor) else null
-        
         cursor.close()
-        db.close()
         return note
     }
 
     fun deleteNote(noteId: Int) {
         val db = writableDatabase
-        // Soft delete - mark as deleted for sync
         val note = getNoteById(noteId)
         if (note.supabaseId != null) {
-            // If synced before, mark as deleted for cloud sync
             val values = ContentValues().apply {
                 put(COLUMN_IS_DELETED, 1)
                 put(COLUMN_IS_SYNCED, 0)
             }
             db.update(TABLE_NAME, values, "$COLUMN_ID = ?", arrayOf(noteId.toString()))
         } else {
-            // If never synced, just delete locally
             db.delete(TABLE_NAME, "$COLUMN_ID = ?", arrayOf(noteId.toString()))
         }
-        db.close()
     }
 
     fun permanentlyDeleteNote(noteId: Int) {
         val db = writableDatabase
         db.delete(TABLE_NAME, "$COLUMN_ID = ?", arrayOf(noteId.toString()))
-        db.close()
     }
 
     fun insertOrUpdateFromCloud(supabaseNote: SupabaseNote, userId: String): Long {
@@ -233,14 +204,11 @@ class NotesDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE
             put(COLUMN_IS_DELETED, if (supabaseNote.isDeleted) 1 else 0)
         }
 
-        val result = if (existingNote != null) {
+        return if (existingNote != null) {
             db.update(TABLE_NAME, values, "$COLUMN_ID = ?", arrayOf(existingNote.id.toString()))
             existingNote.id.toLong()
         } else {
             db.insert(TABLE_NAME, null, values)
         }
-        
-        db.close()
-        return result
     }
 }
